@@ -6,7 +6,7 @@ from nonebot import escape_tag
 from nonebot.adapters import Event as BaseEvent
 from pydantic import root_validator, Field
 
-from .bean import BasePost, BaseFloor, PostInfo, BaseUser
+from .bean import RawPost, BaseFloor, PostInfo, BaseUser
 from .message import Message
 from .utils import truncate
 
@@ -143,7 +143,7 @@ class PostLikeNoticeEvent(LikeNoticeEvent):
     # 1:帖子点赞 or 2楼层点赞
     type: int = Field(default=1)
     user: BaseUser
-    post: BasePost
+    post: RawPost
 
     def get_event_description(self) -> str:
         return f"{self.user.nickname}({self.user.uid}) 给你的帖子点赞了({self.post.title})"
@@ -194,7 +194,7 @@ class ReplyEvent(MessageEvent):
 
 class PostReplyEvent(ReplyEvent):
     type: int = Field(default=1)
-    post: BasePost
+    post: RawPost
 
     def get_event_description(self) -> str:
         return f"{self.user.nickname}({self.user.uid}) " \
@@ -208,6 +208,19 @@ class FloorReplyEvent(ReplyEvent):
     def get_event_description(self) -> str:
         return f"{self.user.nickname}({self.user.uid}) " \
                f"给你的回帖({truncate(self.floor.message)})回复了({truncate(self.message)})"
+
+
+class BasePostEvent(MessageEvent):
+    message_type: str = "base_post"
+    post: RawPost
+
+    @root_validator(pre=True, allow_reuse=True)
+    def _set_post(cls, values: dict):
+        values["post"] = values["raw_data"]
+        return values
+
+    def get_event_description(self) -> str:
+        return f"帖子 | {self.post.title} | {truncate(self.message)}"
 
 
 class PostEvent(MessageEvent):
@@ -232,10 +245,28 @@ class NewPostEvent(PostEvent):
         return f"新帖 | {self.post.title} | {truncate(self.message)}"
 
 
-class NicePostEvent(PostEvent):
-    message_type: str = "nice_post"
+class NewBasePostEvent(BasePostEvent):
+    message_type: str = "new_base_post"
+
+    post: RawPost
+
+    def get_event_description(self) -> str:
+        return f"新帖 | {self.post.title} | {truncate(self.message)}"
+
+
+class NewBaseNicePostEvent(PostEvent):
+    message_type: str = "new_base_nice_post"
 
     post: PostInfo
+
+    def get_event_description(self) -> str:
+        return f"新精华帖 | {self.post.title} | {truncate(self.message)}"
+
+
+class NewNicePostEvent(BasePostEvent):
+    message_type: str = "new_nice_post"
+
+    post: RawPost
 
     def get_event_description(self) -> str:
         return f"新精华帖 | {self.post.title} | {truncate(self.message)}"

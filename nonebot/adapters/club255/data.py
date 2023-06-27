@@ -1,5 +1,7 @@
 from enum import Enum
 
+from urllib.parse import urljoin
+
 
 class Tag:
     id: int
@@ -8,6 +10,12 @@ class Tag:
     def __init__(self, id_: int, name: str):
         self.id = id_
         self.name = name
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}(name="{self.name}",id_={self.id})'
+
+    def __str__(self) -> str:
+        return f"[标签:{self.name}]"
 
 
 class Face:
@@ -21,7 +29,18 @@ class Face:
         self.code = data[2]
 
     def get_url(self) -> str:
-        return f"https://2550505.com/emotion/{self.code}/{self.name}.{self.type}"
+        return urljoin("https://2550505.com", f"emotion/{self.code}/{self.name}.{self.type}")
+
+    def __repr__(self) -> str:
+        return (
+            f'{self.__class__.__name__}('
+            f'name="{self.name}",code="{self.code}",'
+            f'type_="{self.type}"'
+            f')'
+        )
+
+    def __str__(self) -> str:
+        return f"[表情:{self.name}]"
 
 
 class TagEnum(Enum):
@@ -36,29 +55,24 @@ class TagEnum(Enum):
 
 
 class FaceEnum(Enum):
-    干杯_0 = Face(["干杯", "png", "0"])
-    鞭炮上_0 = Face(["鞭炮上", "png", "0"])
-    鞭炮下_0 = Face(["鞭炮下", "png", "0"])
-    变兔子_0 = Face(["变兔子", "png", "0"])
-    不想起床_0 = Face(["不想起床", "png", "0"])
-    吃饺子_0 = Face(["吃饺子", "png", "0"])
-    打卡_0 = Face(["打卡", "png", "0"])
-    发红包_0 = Face(["发红包", "png", "0"])
-    放烟花_0 = Face(["放烟花", "png", "0"])
-    恭喜_0 = Face(["恭喜", "png", "0"])
-    毛怪灯笼_0 = Face(["毛怪灯笼", "png", "0"])
-    毛怪哭哭_0 = Face(["毛怪哭哭", "png", "0"])
-    失落_0 = Face(["失落", "png", "0"])
-    玩雪_0 = Face(["玩雪", "png", "0"])
-    新年快乐_0 = Face(["新年快乐", "png", "0"])
-    许愿_0 = Face(["许愿", "png", "0"])
-    棒_0 = Face(["棒", "png", "0"])
-    饱了_0 = Face(["饱了", "png", "0"])
+    """
+    表情枚举类: 命名规则: 表情名_表情编号
+    推荐仅做代码提示使用
+    实际使用时，建议使用Face来创建表情
+    """
+    生日快乐叹_birthday = Face(["生日快乐！", "png", "birthday"])
+    生日快乐问_birthday = Face(["生日快乐？", "png", "birthday"])
+    吃瓜_8 = Face(["吃瓜", "png", "8"])
+    打不着_8 = Face(["打不着", "png", "8"])
+    交出手脚_8 = Face(["交出手脚", "png", "8"])
+    嗯问_8 = Face(["嗯？", "png", "8"])
+    傻dog_8 = Face(["傻dog", "png", "8"])
+    天才_8 = Face(["天才", "png", "8"])
     lz怎么可能没有女粉_1 = Face(["lz怎么可能没有女粉", "png", "1"])
     awsl_1 = Face(["awsl", "png", "1"])
     不行吗_1 = Face(["不行吗", "png", "1"])
     恭喜_1 = Face(["恭喜", "png", "1"])
-    冲冲冲_1 = Face(["冲冲冲！", "png", "1"])
+    冲冲冲叹_1 = Face(["冲冲冲！", "png", "1"])
     暗中观察_1 = Face(["暗中观察", "png", "1"])
     哈_1 = Face(["哈", "png", "1"])
     peach_1 = Face(["peach", "png", "1"])
@@ -172,3 +186,26 @@ class FaceEnum(Enum):
     开心_7 = Face(["开心", "png", "7"])
     鬼脸_7 = Face(["鬼脸", "png", "7"])
     恰柠檬_7 = Face(["恰柠檬", "png", "7"])
+    干杯_0 = Face(["干杯", "png", "0"])
+    鞭炮上_0 = Face(["鞭炮上", "png", "0"])
+    鞭炮下_0 = Face(["鞭炮下", "png", "0"])
+    变兔子_0 = Face(["变兔子", "png", "0"])
+    不想起床_0 = Face(["不想起床", "png", "0"])
+    吃饺子_0 = Face(["吃饺子", "png", "0"])
+    打卡_0 = Face(["打卡", "png", "0"])
+    发红包_0 = Face(["发红包", "png", "0"])
+    放烟花_0 = Face(["放烟花", "png", "0"])
+    恭喜_0 = Face(["恭喜", "png", "0"])
+    毛怪灯笼_0 = Face(["毛怪灯笼", "png", "0"])
+    毛怪哭哭_0 = Face(["毛怪哭哭", "png", "0"])
+    失落_0 = Face(["失落", "png", "0"])
+    玩雪_0 = Face(["玩雪", "png", "0"])
+    新年快乐_0 = Face(["新年快乐", "png", "0"])
+    许愿_0 = Face(["许愿", "png", "0"])
+    棒_0 = Face(["棒", "png", "0"])
+    饱了_0 = Face(["饱了", "png", "0"])
+
+
+__all__ = [
+    "Tag", "Face", "TagEnum", "FaceEnum"
+]

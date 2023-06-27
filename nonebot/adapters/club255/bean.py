@@ -1,25 +1,10 @@
-from copy import deepcopy
 from datetime import date, datetime
 from typing import Optional, List
 
-from pydantic import BaseModel, root_validator, Field
+from pydantic import root_validator, Field
 
 from .message import Message
-
-
-# try:
-#     from .message import Message
-# except:
-#     from nonebot123.adapters.club255.message import Message
-
-
-class RawModel(BaseModel):
-    raw_data: dict
-
-    @root_validator(pre=True, allow_reuse=True)
-    def _set_raw_data(cls, values: dict):
-        values["raw_data"] = deepcopy(values)
-        return values
+from .types import RawModel
 
 
 class UploadKey(RawModel):
@@ -104,10 +89,10 @@ class LiveInfo(RawModel):
 class VersionInfo(RawModel):
     # 安卓下载地址
     android: str
-    # 描述
-    description: str
     # ios下载地址
     ios: str
+    # 描述
+    description: str
     # 版本号
     version: str
 
@@ -164,9 +149,20 @@ class Tag(RawModel):
 
 
 class RawUser(RawModel):
+    """
+    基础用户信息
+    属性:
+        avatar: 头像
+        nickname: 昵称
+        self_uid: 用户id
+    """
     avatar: str
     nickname: str
     uid: int
+
+
+class RawUserWithContribution(RawUser):
+    contribution: int
 
 
 class BaseUser(RawUser):
@@ -220,7 +216,7 @@ class BaseFloor(RawModel):
         return values
 
 
-class BasePost(RawModel):
+class RawPost(RawModel):
     id: int
     postId: int
     title: str
@@ -232,6 +228,12 @@ class BasePost(RawModel):
         if data.get("postId") is not None:
             data["id"] = data["postId"]
         return data
+
+
+class BasePost(RawPost):
+    content: str
+    labels: List[Label]
+    post_time: datetime
 
 
 class BaseLike(RawModel):
@@ -267,7 +269,7 @@ class PostLike(BaseLike):
     # 1:帖子点赞 or 2楼层点赞
     type: int = Field(default=1)
     user: BaseUser
-    post: BasePost
+    post: RawPost
 
 
 class BaseNotice(RawModel):
@@ -281,7 +283,7 @@ class BaseNotice(RawModel):
         return SystemNotice.parse_obj(self.raw_data)
 
     def to_follow_notice(self) -> Optional["FollowNotice"]:
-        if self.raw_data.get("uid") is None:
+        if self.raw_data.get("self_uid") is None:
             return None
         return FollowNotice.parse_obj(self.raw_data)
 
@@ -337,7 +339,7 @@ class PostReply(BaseReply):
     postId: int
     time: datetime
     type: int = Field(default=1)
-    post: BasePost
+    post: RawPost
 
 
 class FloorReply(BaseReply):
@@ -353,17 +355,19 @@ class PostInfo(BasePost):
     id: int
     postId: int
     title: str
+    content: str
+    post_time: datetime
+    labels: List[Label]
 
     auth: int
     authentication: str
     author: BaseUser
-    content: str
     # message: Message
     hanserLike: bool
     hanserReply: bool
     last_reply_time: datetime
     last_reply_user: int
-    post_time: datetime
+
     likes: int
     replies: int
     readings: int
@@ -372,7 +376,6 @@ class PostInfo(BasePost):
     role: int
     exp: int
     tags: List[Tag]
-    labels: List[Label]
     videos: List[str]
     liked: bool
     pictures: List[str]
@@ -421,7 +424,7 @@ class PostDetails(PostInfo):
     location: str
 
 
-class UserPostInfo(BasePost):
+class UserPostInfo(RawPost):
     """
     api:post/user/list
     获取的帖子信息
@@ -462,7 +465,8 @@ if __name__ == '__main__':
 __all__ = [
     'RawModel', 'UploadKey', 'UploadResult', 'VideoInfo', 'UserData', 'SignInfo', 'LoginInfo', 'FollowResult',
     'ReplyResult', 'PostResult', 'NavInfo', 'LiveInfo', 'VersionInfo', 'LikeInfo', 'NoticeCount', 'Label',
-    'Level', 'Tag', 'RawUser', 'BaseUser', 'User', 'PostUser', 'ChatList', 'BaseFloor', 'BasePost', 'PostInfo',
+    'Level', 'Tag', 'RawUser', 'BaseUser', 'User', 'PostUser', 'ChatList', 'BaseFloor', 'RawPost', 'PostInfo',
     'PostDetails', 'UserPostInfo', 'BaseLike', 'FloorLike', 'PostLike', 'BaseNotice', 'SystemNotice',
-    'FollowNotice', 'SystemNoticeMessage', 'BaseReply', 'PostReply', 'FloorReply'
+    'FollowNotice', 'SystemNoticeMessage', 'BaseReply', 'PostReply', 'FloorReply', 'RawUserWithContribution',
+    'BasePost'
 ]

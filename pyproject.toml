@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "adapter-club255"
+version = "0.1.0"
+description = ""
+authors = ["eya46 <644310932@qq.com>"]
+readme = "README.md"
+packages = [{include = "adapter_club255"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+nonebot2 = {extras = ["fastapi", "httpx"], version = "^2.0.0"}
+pillow = "^9.5.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

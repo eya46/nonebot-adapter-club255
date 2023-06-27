@@ -12,7 +12,7 @@ from nonebot.internal.adapter.message import TMS, TM
 from pydantic import BaseModel, AnyUrl
 
 from .data import FaceEnum, Face, TagEnum, Tag
-from .exceptions import *
+from .exception import *
 from .utils import *
 
 
@@ -279,7 +279,8 @@ class NextLine(MessageSegment):
     """
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}(text="{self.data.get("text")}",strong={self.get("strong")},em={self.get("em")})'
+        return f'{self.__class__.__name__}' \
+               f'(text="{self.data.get("text")}",strong={self.get("strong")},em={self.get("em")})'
 
     @staticmethod
     def new_line() -> "NextLine":
@@ -291,7 +292,7 @@ class NextLine(MessageSegment):
         return "\n"
 
     def xml(self) -> str:
-        return ""
+        return '<br class="ProseMirror-trailingBreak">'
 
     def __init__(self) -> None:
         super().__init__(
@@ -362,10 +363,35 @@ class FaceMsg(MessageSegment):
     def xml(self) -> str:
         name = self.data["name"]
         return f'<img src="{self.url}" alt="{name}" title="{name}" class="emoticon-img" ' \
-               f'referrerpolicy="no-referrer" data-emotion-name="{name}">'.strip()
+               f'referrerpolicy="no-referrer" data-emotion-name="{name}" contenteditable="false" draggable="true">'
+        # f'<img class="ProseMirror-separator" alt="">'.strip()
 
     @classmethod
     def get_message_class(cls) -> Type["FaceMsg"]:
+        return cls
+
+
+class _XmlMsg(MessageSegment):
+    type = "xml"
+
+    def __repr__(self) -> str:
+        return (
+            f'{self.__class__.__name__}(text="{self.data.get("text")}")'
+        )
+
+    def __str__(self) -> str:
+        return self.data.get("xml", "")
+
+    def __init__(self, xml: str) -> None:
+        super().__init__(
+            "xml", {"xml": xml}
+        )
+
+    def xml(self) -> str:
+        return str(self)
+
+    @classmethod
+    def get_message_class(cls) -> Type["_XmlMsg"]:
         return cls
 
 
@@ -438,9 +464,6 @@ class TextMsg(MessageSegment):
 class Message(BaseMessage[MessageSegment]):
 
     def extract_plain_text(self) -> str:
-        """
-        楼层回复只能发纯文本，并且无法换行，所以这个api不解析NextLine
-        """
         return super().extract_plain_text()
 
     @classmethod
@@ -459,11 +482,10 @@ class Message(BaseMessage[MessageSegment]):
         tmp = []
         for index, i in enumerate(self):
             if isinstance(i, NextLine) or (isinstance(i, TextMsg) and i.txt == "\n"):
+                tmp.append(NextLine())
                 if len(tmp) != 0:
                     msgs.append(Message(deepcopy(tmp)))
                     tmp = []
-                else:
-                    msgs.append([])
             elif isinstance(i, VideoMsg):
                 if len(tmp) == 0:
                     msgs.append(Message(i))
@@ -490,6 +512,11 @@ class Message(BaseMessage[MessageSegment]):
                 tmp.append(i)
         if len(tmp) != 0:
             msgs.append(Message(deepcopy(tmp)))
+
+        for ml in msgs:
+            # 如果以图片结尾，就加_XmlMsg
+            if (len(ml) > 1 and isinstance(ml[-2], FaceMsg)) or len(ml) == 1 and isinstance(ml[0], FaceMsg):
+                ml.insert(-1, _XmlMsg('<img class="ProseMirror-separator" alt="">'))
 
         return "".join([
             f"<p>{''.join(j.xml() for j in i)}</p>"

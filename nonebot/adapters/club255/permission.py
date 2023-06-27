@@ -20,7 +20,7 @@ async def _common_post(event: PostEvent):
     return event.post.type == 0
 
 
-def User_Post(uid: UID) -> Permission:
+def Target_User_Post(uid: UID) -> Permission:
     """
     只获取指定用户的帖子
     """
@@ -40,4 +40,8 @@ POST_LEVEL: Permission = Permission(_level_post)
 """普通帖子"""
 POST_COMMON: Permission = Permission(_common_post)
 """hanser的帖子"""
-POST_HANSER: Permission = Permission(User_Post(1))
+POST_HANSER: Permission = Target_User_Post(1)
+
+__all__ = [
+    "Target_User_Post", "POST_BIRTHDAY", "POST_NEW_USER", "POST_LEVEL", "POST_COMMON", "POST_HANSER"
+]
