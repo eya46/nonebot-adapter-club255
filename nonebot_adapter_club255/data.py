@@ -1,5 +1,4 @@
 from enum import Enum
-
 from urllib.parse import urljoin
 
 
@@ -32,12 +31,7 @@ class Face:
         return urljoin("https://2550505.com", f"emotion/{self.code}/{self.name}.{self.type}")
 
     def __repr__(self) -> str:
-        return (
-            f'{self.__class__.__name__}('
-            f'name="{self.name}",code="{self.code}",'
-            f'type_="{self.type}"'
-            f')'
-        )
+        return f"{self.__class__.__name__}(" f'name="{self.name}",code="{self.code}",' f'type_="{self.type}"' f")"
 
     def __str__(self) -> str:
         return f"[表情:{self.name}]"
@@ -60,6 +54,7 @@ class FaceEnum(Enum):
     推荐仅做代码提示使用
     实际使用时，建议使用Face来创建表情
     """
+
     生日快乐叹_birthday = Face(["生日快乐！", "png", "birthday"])
     生日快乐问_birthday = Face(["生日快乐？", "png", "birthday"])
     吃瓜_8 = Face(["吃瓜", "png", "8"])
@@ -206,6 +201,4 @@ class FaceEnum(Enum):
     饱了_0 = Face(["饱了", "png", "0"])
 
 
-__all__ = [
-    "Tag", "Face", "TagEnum", "FaceEnum"
-]
+__all__ = ["Tag", "Face", "TagEnum", "FaceEnum"]

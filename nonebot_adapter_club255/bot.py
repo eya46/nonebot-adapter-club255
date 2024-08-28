@@ -1,29 +1,38 @@
 import json
-from typing import Union, Any, List, Callable, Type, Optional
+from typing import Any, Union
+from collections.abc import Callable
 
 from nonebot import logger
-from nonebot.adapters import Bot as RawBot
-from nonebot.internal.adapter import Adapter
-from nonebot.internal.driver import Response
+from pydantic import TypeAdapter
 from nonebot.message import handle_event
-from pydantic import parse_obj_as
+from nonebot.adapters import Bot as RawBot
+from nonebot.internal.driver import Response
+from nonebot.internal.adapter import Adapter
 
-from .bean import *
+from .bean import (
+    BaseLike,
+    BasePost,
+    PostInfo,
+    UserData,
+    BaseReply,
+    LoginInfo,
+    PostResult,
+    ReplyResult,
+    UploadResult,
+    UserPostInfo,
+)
+from .event import Event, PostEvent, ReplyEvent, FloorReplyEvent
+from .types import FID, PID, UID, T
 from .client import Client, LoginClient
 from .config import Config
-from .event import Event, PostEvent, ReplyEvent, FloorReplyEvent
-from .exception import SendNotImplemented, ActionFailed
-from .message import Message, MessageSegment, ImageMsg
-from .types import *
+from .message import Message, ImageMsg, MessageSegment
+from .exception import ActionFailed, SendNotImplemented
 
 
 class BaseBot(RawBot):
-
     def __getattr__(self, name: str) -> Callable:
         if name.startswith("__") and name.endswith("__"):
-            raise AttributeError(
-                f"'{self.__class__.__name__}' object has no attribute '{name}'"
-            )
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
         return getattr(self.client, name)
 
     async def handle_event(self, event: Event):
@@ -32,20 +41,21 @@ class BaseBot(RawBot):
     def get_self_id(self) -> int:
         return int(self.self_id)
 
-    async def send(self, event: "Event", message: Union[str, "Message", "MessageSegment"], **kwargs: Any) -> Any:
+    async def send(
+        self,
+        event: "Event",
+        message: Union[str, "Message", "MessageSegment"],
+        **kwargs: Any,
+    ) -> Any:
         if isinstance(self, UnLoginBot):
             raise SendNotImplemented("未登录的Bot无法发送消息")
         if isinstance(event, PostEvent):
             return await self.send_post_reply(message=message, pid=event.post.postId, author=event.post.id)
         elif isinstance(event, ReplyEvent):
             if isinstance(event, FloorReplyEvent):
-                return await self.send_floor_reply(
-                    message=message, pid=event.postId, fid=event.floor.floorId
-                )
+                return await self.send_floor_reply(message=message, pid=event.postId, fid=event.floor.floorId)
             else:
-                return await self.send_post_reply(
-                    message=message, pid=event.postId, author=event.user.uid
-                )
+                return await self.send_post_reply(message=message, pid=event.postId, author=event.user.uid)
         else:
             raise SendNotImplemented(f"{event.__class__}({event.get_event_name()}) -> 未实现该Event的send")
 
@@ -57,7 +67,7 @@ class BaseBot(RawBot):
         try:
             return json.loads(data)
         except Exception as e:
-            logger.error(f"调用api失败,code:{resp.status_code}")
+            logger.error(f"调用api<{api}>失败,code:{resp.status_code}")
             raise e
 
     async def call_api_get(self, api: str, **data: Any) -> Any:
@@ -67,35 +77,45 @@ class BaseBot(RawBot):
         return await self.call_api(api, method=data.pop("method") if data.get("method") else "POST", **data)
 
     async def api_post_to_type(
-            self, api: str, type_: Type[T], strict=True, data_from: Optional[Union[str, Callable]] = None, **data: Any
+        self,
+        api: str,
+        type_: type[T],
+        strict=True,
+        data_from: str | Callable | None = None,
+        **data: Any,
     ) -> T:
         res = await self.call_api_post(api, **data)
         if strict and res.get("code", 0) != 0:
             raise ActionFailed(f"API调用失败: {res.get('msg', '未知错误')}")
-        return parse_obj_as(
-            type_, (
-                res[data_from] if isinstance(data_from, str) else data_from(res)
-            ) if data_from else res
+        return TypeAdapter(type_).validate_python(
+            (res[data_from] if isinstance(data_from, str) else data_from(res)) if data_from else res
         )
 
     async def api_get_to_type(
-            self, api: str, type_: Type[T], strict: bool = True, data_from: Optional[Union[str, Callable]] = None,
-            **data: Any
+        self,
+        api: str,
+        type_: type[T],
+        strict: bool = True,
+        data_from: str | Callable | None = None,
+        **data: Any,
     ) -> T:
         res = await self.call_api_get(api, **data)
         if strict and res.get("code", 0) != 0:
             raise ActionFailed(f"API调用失败: {res.get('msg', '未知错误')}")
-        return parse_obj_as(
-            type_, (
-                res[data_from] if isinstance(data_from, str) else data_from(res)
-            ) if data_from else res
+        return TypeAdapter(type_).validate_python(
+            (res[data_from] if isinstance(data_from, str) else data_from(res)) if data_from else res,
         )
 
     def __init__(self, *, adapter: "Adapter", self_id: str, header: dict, config: Config):
         super().__init__(adapter, self_id)
         self.header = header
         self._config = config
-        self.client = Client(self.api_get_to_type, self.api_post_to_type, self.call_api, self.adapter.request)
+        self.client = Client(
+            self.api_get_to_type,
+            self.api_post_to_type,
+            self.call_api,
+            self.adapter.request,
+        )
 
     @property
     def config(self) -> Config:
@@ -106,10 +126,12 @@ class BaseBot(RawBot):
 
     async def login(self, account: str = "", password: str = "") -> LoginInfo:
         data = await self.call_api(
-            "auth/login", method="POST", **{
+            "auth/login",
+            method="POST",
+            **{
                 "account": account or self.config.club255_account,
-                "password": password or self.config.club255_password
-            }
+                "password": password or self.config.club255_password,
+            },
         )
 
         if data["code"] != 0:
@@ -120,41 +142,53 @@ class BaseBot(RawBot):
         if isinstance(self, UnLoginBot):
             self.set_token(data["token"])
             self.adapter.bot_disconnect(self)
-            self.adapter.bot_connect(Bot(
-                adapter=self.adapter, self_id=str(data["uid"]), header=self.header, config=self.config
-            ))
+            self.adapter.bot_connect(
+                Bot(
+                    adapter=self.adapter,
+                    self_id=str(data["uid"]),
+                    header=self.header,
+                    config=self.config,
+                )
+            )
 
-        return LoginInfo.parse_obj(data)
+        return LoginInfo.model_validate(data)
 
     async def get_post_list_brief(
-            self, *, page: int = 1, _order: int = 1, _filter: int = 0, page_size=0
-    ) -> List[BasePost]:
+        self, *, page: int = 1, _order: int = 1, _filter: int = 0, page_size=0
+    ) -> list[BasePost]:
         datas = await self.client.get_post_list_brief(
-            page=page, _order=_order, _filter=_filter, page_size=page_size or self.config.club255_page_size
+            page=page,
+            _order=_order,
+            _filter=_filter,
+            page_size=page_size or self.config.club255_page_size,
         )
         if self.config.club255_receive_me:
             return datas
         else:
-            return list(filter(
-                lambda x: x.author.uid != self.self_id,
-                datas
-            ))
+            return list(filter(lambda x: x.author.uid != self.self_id, datas))
 
-    async def get_post_list_brief_by_time(self, *, page: int = 1, page_size=0) -> List[BasePost]:
+    async def get_post_list_brief_by_time(self, *, page: int = 1, page_size=0) -> list[BasePost]:
         return await self.get_post_list(page=page, _order=1, _filter=0, page_size=page_size)
 
-    async def get_post_list_brief_by_reply(self, *, page: int = 1, page_size=0) -> List[BasePost]:
+    async def get_post_list_brief_by_reply(self, *, page: int = 1, page_size=0) -> list[BasePost]:
         return await self.get_post_list(page=page, _order=0, _filter=0, page_size=page_size)
 
-    async def get_nice_post_list_brief_by_time(self, *, page: int = 1, page_size=0) -> List[BasePost]:
+    async def get_nice_post_list_brief_by_time(self, *, page: int = 1, page_size=0) -> list[BasePost]:
         return await self.get_post_list_brief(page=page, _order=1, _filter=1, page_size=page_size)
 
-    async def get_nice_post_list_brief_by_replay(self, *, page: int = 1, page_size=0) -> List[BasePost]:
+    async def get_nice_post_list_brief_by_replay(self, *, page: int = 1, page_size=0) -> list[BasePost]:
         return await self.get_post_list_brief(page=page, _order=0, _filter=1, page_size=page_size)
 
 
 class UnLoginBot(BaseBot):
-    def __init__(self, *, adapter: "Adapter", self_id: str = "2550505", header: dict, config: Config):
+    def __init__(
+        self,
+        *,
+        adapter: "Adapter",
+        self_id: str = "2550505",
+        header: dict,
+        config: Config,
+    ):
         """
         未登录Bot默认的id是2550505
         """
@@ -167,7 +201,12 @@ class Bot(BaseBot):
         已登录Bot的id是用户的uid
         """
         super().__init__(adapter=adapter, self_id=self_id, header=header, config=config)
-        self.client = LoginClient(self.api_get_to_type, self.api_post_to_type, self.call_api, self.adapter.request)
+        self.client = LoginClient(
+            self.api_get_to_type,
+            self.api_post_to_type,
+            self.call_api,
+            self.adapter.request,
+        )
 
     async def get_self_data(self) -> UserData:
         """
@@ -177,61 +216,65 @@ class Bot(BaseBot):
         return await self.get_user_data(self.self_id)
 
     async def upload_image(self, *, img_msg: ImageMsg) -> UploadResult:
-        return await self.client.upload_image(url=self.config.club255_upload_api, self_uid=self.self_id,
-                                              img_msg=img_msg)
+        return await self.client.upload_image(url=self.config.club255_upload_api, self_uid=self.self_id, img_msg=img_msg)
 
-    async def dispose_msg(self, *, message: Union[str, Message, MessageSegment]) -> Message:
+    async def dispose_msg(self, *, message: str | Message | MessageSegment) -> Message:
         return await self.client.dispose_msg(url=self.config.club255_upload_api, self_uid=self.self_id, message=message)
 
-    async def send_post(
-            self, title: str, message: Union[str, Message, MessageSegment]
-    ) -> PostResult:
+    async def send_post(self, title: str, message: str | Message | MessageSegment) -> PostResult:
         return await self.client.send_post(
-            title=title, url=self.config.club255_upload_api, self_uid=self.self_id, message=message
+            title=title,
+            url=self.config.club255_upload_api,
+            self_uid=self.self_id,
+            message=message,
         )
 
-    async def send_post_reply(
-            self, *, author: UID, message: Union[str, Message, MessageSegment], pid: PID
-    ) -> ReplyResult:
+    async def send_post_reply(self, *, author: UID, message: str | Message | MessageSegment, pid: PID) -> ReplyResult:
         return await self.client.send_post_reply(
-            upload_url=self.config.club255_upload_api, self_uid=self.self_id, pid=pid, message=message, author=author
+            upload_url=self.config.club255_upload_api,
+            self_uid=self.self_id,
+            pid=pid,
+            message=message,
+            author=author,
         )
 
-    async def send_floor_reply(
-            self, *, message: Union[str, Message, MessageSegment], pid: PID, fid: FID
-    ) -> ReplyResult:
+    async def send_floor_reply(self, *, message: str | Message | MessageSegment, pid: PID, fid: FID) -> ReplyResult:
         return await self.client.send_floor_reply(
-            upload_url=self.config.club255_upload_api, self_uid=self.self_id, pid=pid, fid=fid, message=message
+            upload_url=self.config.club255_upload_api,
+            self_uid=self.self_id,
+            pid=pid,
+            fid=fid,
+            message=message,
         )
 
-    async def get_post_list(self, *, page: int = 1, _order: int = 1, _filter: int = 0, page_size=0) -> List[PostInfo]:
+    async def get_post_list(self, *, page: int = 1, _order: int = 1, _filter: int = 0, page_size=0) -> list[PostInfo]:
         datas = await self.client.get_post_list(
-            page=page, _order=_order, _filter=_filter, page_size=page_size or self.config.club255_page_size
+            page=page,
+            _order=_order,
+            _filter=_filter,
+            page_size=page_size or self.config.club255_page_size,
         )
         if self.config.club255_receive_me:
             return datas
         else:
-            return list(filter(
-                lambda x: x.author.uid != self.self_id,
-                datas
-            ))
+            return list(filter(lambda x: x.author.uid != self.self_id, datas))
 
-    async def get_post_list_by_time(self, *, page: int = 1, page_size=0) -> List[PostInfo]:
+    async def get_post_list_by_time(self, *, page: int = 1, page_size=0) -> list[PostInfo]:
         return await self.get_post_list(page=page, _order=1, _filter=0, page_size=page_size)
 
-    async def get_post_list_by_reply(self, *, page: int = 1, page_size=0) -> List[PostInfo]:
+    async def get_post_list_by_reply(self, *, page: int = 1, page_size=0) -> list[PostInfo]:
         return await self.get_post_list(page=page, _order=0, _filter=0, page_size=page_size)
 
-    async def get_nice_post_list_by_time(self, *, page: int = 1, page_size=0) -> List[PostInfo]:
+    async def get_nice_post_list_by_time(self, *, page: int = 1, page_size=0) -> list[PostInfo]:
         return await self.get_post_list(page=page, _order=1, _filter=1, page_size=page_size)
 
-    async def get_nice_post_list_by_replay(self, *, page: int = 1, page_size=0) -> List[PostInfo]:
+    async def get_nice_post_list_by_replay(self, *, page: int = 1, page_size=0) -> list[PostInfo]:
         return await self.get_post_list(page=page, _order=0, _filter=1, page_size=page_size)
 
     def get_token(self) -> str:
         return self.header["cookie"].split(";")[0].split("=")[1]
 
-    async def get_post_by_user(self, uid: UID, *, page: int = 1, page_size=0) -> List[UserPostInfo]:
+    async def get_post_by_user(self, uid: UID, *, page: int = 1, page_size=0) -> list[UserPostInfo]:
         """
         获取帖子列表
         :param page_size: 帖子数量
@@ -243,10 +286,10 @@ class Bot(BaseBot):
             uid=uid, page=page, page_size=page_size or self.config.club255_page_size
         )
 
-    async def get_reply_list(self, *, page: int = 1, pageSize: int = 0) -> List[BaseReply]:
+    async def get_reply_list(self, *, page: int = 1, pageSize: int = 0) -> list[BaseReply]:
         return await self.client.get_reply_list(page=page, pageSize=pageSize or self.config.club255_page_size)
 
-    async def get_like_list(self, *, page: int = 1, pageSize: int = 0) -> List[BaseLike]:
+    async def get_like_list(self, *, page: int = 1, pageSize: int = 0) -> list[BaseLike]:
         """
         点赞列表
         :param page:

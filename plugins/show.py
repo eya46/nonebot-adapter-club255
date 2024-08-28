@@ -1,4 +1,4 @@
-from nonebot import on_message, logger
+from nonebot import logger, on_message
 
 from nonebot_adapter_club255 import Bot
 from nonebot_adapter_club255.event import NewPostEvent

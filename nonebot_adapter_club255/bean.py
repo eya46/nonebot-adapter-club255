@@ -1,32 +1,31 @@
+from typing import Optional
 from datetime import date, datetime
-from typing import Optional, List
 
-from pydantic import root_validator, Field
+from pydantic import Field, BaseModel, model_validator
 
 from .message import Message
-from .types import RawModel
 
 
-class UploadKey(RawModel):
+class UploadKey(BaseModel):
     code: int
     id: int
     sign: str
     ts: int
 
 
-class UploadResult(RawModel):
+class UploadResult(BaseModel):
     err: int
     id: str
     url: str
 
 
-class VideoInfo(RawModel):
+class VideoInfo(BaseModel):
     code: int
     cover: str
     title: str
 
 
-class UserData(RawModel):
+class UserData(BaseModel):
     bilibiliScore: int
     douyuScore: int
     fans: int
@@ -35,50 +34,50 @@ class UserData(RawModel):
     post: int
 
 
-class SignInfo(RawModel):
+class SignInfo(BaseModel):
     code: int
     exp: int
     msg: str
 
 
-class LoginInfo(RawModel):
+class LoginInfo(BaseModel):
     # code=0登录成功
     code: int
     token: str
     uid: int
-    msg: Optional[str]
+    msg: str | None
 
 
-class FollowResult(RawModel):
+class FollowResult(BaseModel):
     code: int
     msg: str
     # 0:取关 1:关注
     relation: int
 
 
-class ReplyResult(RawModel):
+class ReplyResult(BaseModel):
     # 回帖时:id = floor_id，回复楼层时没有
-    id: Optional[int]
+    id: int | None
     code: int
     exp: int
     msg: str
 
 
-class PostResult(RawModel):
+class PostResult(BaseModel):
     post_id: int
     code: int
     exp: int
     msg: str
 
 
-class NavInfo(RawModel):
+class NavInfo(BaseModel):
     # 公告栏
     link: str
     text: str
     time: datetime
 
 
-class LiveInfo(RawModel):
+class LiveInfo(BaseModel):
     # 直播消息
     keyframe: str
     # 直播状态: 1开播,2未开播
@@ -86,7 +85,7 @@ class LiveInfo(RawModel):
     user_cover: str
 
 
-class VersionInfo(RawModel):
+class VersionInfo(BaseModel):
     # 安卓下载地址
     android: str
     # ios下载地址
@@ -97,14 +96,14 @@ class VersionInfo(RawModel):
     version: str
 
 
-class LikeInfo(RawModel):
+class LikeInfo(BaseModel):
     code: int
     exp: int
     liked: bool
     msg: str
 
 
-class NoticeCount(RawModel):
+class NoticeCount(BaseModel):
     at: int
     chats: int
     likes: int
@@ -113,20 +112,20 @@ class NoticeCount(RawModel):
     replies: int
 
 
-class Label(RawModel):
+class Label(BaseModel):
     labelId: int
     labelName: str
     # "rgb(250,143,34)"
     color: str
 
 
-class Level(RawModel):
+class Level(BaseModel):
     # "#ffffff"
     color: str
     exp: int
     # 当前的经验
-    currentExp: Optional[int]
-    id: Optional[int]
+    currentExp: int | None
+    id: int | None
     label_color: str
     level: int
     name: str
@@ -134,7 +133,8 @@ class Level(RawModel):
     def __str__(self) -> str:
         return f"等级:{self.level}|{self.name}"
 
-    @root_validator(pre=True, allow_reuse=True)
+    @model_validator(mode="before")
+    @classmethod
     def _set_label_color(cls, values: dict):
         if values.get("label_color") is not None:
             values["labelColor"] = values["label_color"]
@@ -143,12 +143,12 @@ class Level(RawModel):
         return values
 
 
-class Tag(RawModel):
+class Tag(BaseModel):
     tagId: int
     tagName: str
 
 
-class RawUser(RawModel):
+class RawUser(BaseModel):
     """
     基础用户信息
     属性:
@@ -156,6 +156,7 @@ class RawUser(RawModel):
         nickname: 昵称
         self_uid: 用户id
     """
+
     avatar: str
     nickname: str
     uid: int
@@ -186,16 +187,16 @@ class User(BaseUser):
     # 生日
     birthday: date
     # 运营商
-    isp: Optional[str]
+    isp: str | None
     # 归属地
-    location: Optional[str]
+    location: str | None
     # 签名
     sign: str
     role: int
     status: int
 
 
-class ChatList(RawModel):
+class ChatList(BaseModel):
     isTop: bool
     lastMessage: str
     time: datetime
@@ -203,25 +204,27 @@ class ChatList(RawModel):
     user: BaseUser
 
 
-class BaseFloor(RawModel):
+class BaseFloor(BaseModel):
     content: str
     message: Message
     floor: int
     floorId: int
 
-    @root_validator(pre=True, allow_reuse=True)
+    @model_validator(mode="before")
+    @classmethod
     def _set_message(cls, values: dict):
         Message.join_url(values)
         values["message"] = values["content"]
         return values
 
 
-class RawPost(RawModel):
+class RawPost(BaseModel):
     id: int
     postId: int
     title: str
 
-    @root_validator(pre=True, allow_reuse=True)
+    @model_validator(mode="before")
+    @classmethod
     def _set_id_postId(cls, data: dict):
         if data.get("id") is not None:
             data["postId"] = data["id"]
@@ -232,11 +235,11 @@ class RawPost(RawModel):
 
 class BasePost(RawPost):
     content: str
-    labels: List[Label]
+    labels: list[Label]
     post_time: datetime
 
 
-class BaseLike(RawModel):
+class BaseLike(BaseModel):
     postId: int
     time: datetime
     # 1:帖子点赞 or 2楼层点赞
@@ -246,12 +249,12 @@ class BaseLike(RawModel):
     def to_floor_like(self) -> Optional["FloorLike"]:
         if self.type != 2:
             return None
-        return FloorLike.parse_obj(self.raw_data)
+        return FloorLike.model_validate(self)
 
     def to_post_like(self) -> Optional["PostLike"]:
         if self.type != 1:
             return None
-        return PostLike.parse_obj(self.raw_data)
+        return PostLike.model_validate(self)
 
 
 class FloorLike(BaseLike):
@@ -272,20 +275,20 @@ class PostLike(BaseLike):
     post: RawPost
 
 
-class BaseNotice(RawModel):
+class BaseNotice(BaseModel):
     sort: int
     status: int
     time: datetime
 
     def to_system_notice(self) -> Optional["SystemNotice"]:
-        if self.raw_data.get("type") is None:
+        if self.get("type") is None:
             return None
-        return SystemNotice.parse_obj(self.raw_data)
+        return SystemNotice.model_validate(self)
 
     def to_follow_notice(self) -> Optional["FollowNotice"]:
-        if self.raw_data.get("self_uid") is None:
+        if self.get("self_uid") is None:
             return None
-        return FollowNotice.parse_obj(self.raw_data)
+        return FollowNotice.model_validate(self)
 
 
 class SystemNotice(BaseNotice):
@@ -294,7 +297,7 @@ class SystemNotice(BaseNotice):
     type: int
 
 
-class SystemNoticeMessage(RawModel):
+class SystemNoticeMessage(BaseModel):
     # 消息中心->系统消息
     content: str
     time: datetime
@@ -307,7 +310,7 @@ class FollowNotice(BaseNotice):
     uid: int
 
 
-class BaseReply(RawModel):
+class BaseReply(BaseModel):
     content: str
     message: Message
     postId: int
@@ -316,7 +319,8 @@ class BaseReply(RawModel):
     type: int
     user: BaseUser
 
-    @root_validator(pre=True, allow_reuse=True)
+    @model_validator(mode="before")
+    @classmethod
     def _set_message(cls, values: dict):
         Message.join_url(values)
         values["message"] = values["content"]
@@ -325,12 +329,12 @@ class BaseReply(RawModel):
     def to_post_reply(self) -> Optional["PostReply"]:
         if self.type != 1:
             return None
-        return PostReply.parse_obj(self.raw_data)
+        return PostReply.model_validate(self)
 
     def to_floor_reply(self) -> Optional["FloorReply"]:
         if self.type != 2:
             return None
-        return FloorReply.parse_obj(self.raw_data)
+        return FloorReply.model_validate(self)
 
 
 class PostReply(BaseReply):
@@ -357,7 +361,7 @@ class PostInfo(BasePost):
     title: str
     content: str
     post_time: datetime
-    labels: List[Label]
+    labels: list[Label]
 
     auth: int
     authentication: str
@@ -375,11 +379,11 @@ class PostInfo(BasePost):
     type: int
     role: int
     exp: int
-    tags: List[Tag]
-    videos: List[str]
+    tags: list[Tag]
+    videos: list[str]
     liked: bool
-    pictures: List[str]
-    primaryPictures: List[str]
+    pictures: list[str]
+    primaryPictures: list[str]
 
 
 class PostUser(BaseUser):
@@ -401,17 +405,17 @@ class PostDetails(PostInfo):
     auth: int
     authentication: str
     author: PostUser
-    labels: List[Label]
+    labels: list[Label]
     # html格式
     content: str
     likes: int
     liked: bool
-    pictures: List[str]
-    primaryPictures: List[str]
+    pictures: list[str]
+    primaryPictures: list[str]
     post_time: datetime
     readings: int
     replies: int
-    tags: List[Tag]
+    tags: list[Tag]
     type: int
 
     valued: bool
@@ -429,25 +433,27 @@ class UserPostInfo(RawPost):
     api:post/user/list
     获取的帖子信息
     """
+
     auth: int
     authentication: str
     avatar: int
     content: str
     id: int
-    labels: List[Label]
+    labels: list[Label]
     liked: bool
     likes: int
     nickname: str
-    pictures: List[str]
+    pictures: list[str]
     post_time: datetime
-    primaryPictures: List[str]
+    primaryPictures: list[str]
     readings: int
     replies: int
-    tags: List[Tag]
+    tags: list[Tag]
     title: str
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
+
     def get_subclasses(class_):
         classes = []
         for i in class_.__subclasses__():
@@ -456,17 +462,49 @@ if __name__ == '__main__':
                 classes.extend(get_subclasses(i))
         return classes
 
-
-    models = [RawModel.__name__]
-    models.extend(get_subclasses(RawModel))
+    models = [BaseModel.__name__]
+    models.extend(get_subclasses(BaseModel))
 
     print(models)
 
 __all__ = [
-    'RawModel', 'UploadKey', 'UploadResult', 'VideoInfo', 'UserData', 'SignInfo', 'LoginInfo', 'FollowResult',
-    'ReplyResult', 'PostResult', 'NavInfo', 'LiveInfo', 'VersionInfo', 'LikeInfo', 'NoticeCount', 'Label',
-    'Level', 'Tag', 'RawUser', 'BaseUser', 'User', 'PostUser', 'ChatList', 'BaseFloor', 'RawPost', 'PostInfo',
-    'PostDetails', 'UserPostInfo', 'BaseLike', 'FloorLike', 'PostLike', 'BaseNotice', 'SystemNotice',
-    'FollowNotice', 'SystemNoticeMessage', 'BaseReply', 'PostReply', 'FloorReply', 'RawUserWithContribution',
-    'BasePost'
+    "UploadKey",
+    "UploadResult",
+    "VideoInfo",
+    "UserData",
+    "SignInfo",
+    "LoginInfo",
+    "FollowResult",
+    "ReplyResult",
+    "PostResult",
+    "NavInfo",
+    "LiveInfo",
+    "VersionInfo",
+    "LikeInfo",
+    "NoticeCount",
+    "Label",
+    "Level",
+    "Tag",
+    "RawUser",
+    "BaseUser",
+    "User",
+    "PostUser",
+    "ChatList",
+    "BaseFloor",
+    "RawPost",
+    "PostInfo",
+    "PostDetails",
+    "UserPostInfo",
+    "BaseLike",
+    "FloorLike",
+    "PostLike",
+    "BaseNotice",
+    "SystemNotice",
+    "FollowNotice",
+    "SystemNoticeMessage",
+    "BaseReply",
+    "PostReply",
+    "FloorReply",
+    "RawUserWithContribution",
+    "BasePost",
 ]

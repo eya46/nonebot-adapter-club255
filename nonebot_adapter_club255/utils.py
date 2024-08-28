@@ -22,9 +22,7 @@ def set_father_tag(child: Any, father: str) -> Element:
 
 
 # copy by adapter-onebot-v11
-def truncate(
-        s: Any, length: int = 100, kill_words: bool = False, end: str = "..."
-) -> str:
+def truncate(s: Any, length: int = 100, kill_words: bool = False, end: str = "...") -> str:
     """将给定字符串截断到指定长度。
 
     参数:

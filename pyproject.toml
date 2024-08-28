@@ -1,15 +1,15 @@
 [tool.poetry]
 name = "adapter-club255"
-version = "0.1.0"
+version = "0.1.1"
 description = ""
 authors = ["eya46 <644310932@qq.com>"]
 readme = "README.md"
-packages = [{include = "adapter_club255"}]
+packages = [{ include = "adapter_club255" }]
 license = "MIT"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-nonebot2 = {extras = ["fastapi", "httpx"], version = "^2.3.3"}
+nonebot2 = { extras = ["fastapi", "httpx"], version = "^2.3.3" }
 pillow = "^9.5.0"
 pydantic = "~2"
 
@@ -17,3 +17,26 @@ pydantic = "~2"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 121
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "UP", "C", "T", "PYI", "PT", "Q", "I"]
+ignore = [
+    "E402", # 导包位置
+    "E722", # 空except
+    "C901", # 复杂函数名
+    "PYI021", # PYI注释格式
+    "PYI048",
+    "UP006", # Type -> type
+]
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
+
+[tool.ruff.lint.isort]
+length-sort = true
+force-sort-within-sections = true

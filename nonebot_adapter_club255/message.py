@@ -1,19 +1,26 @@
+from io import BytesIO
 import re
 from copy import deepcopy
-from io import BytesIO
+from typing import Type
 from pathlib import Path
-from typing import Type, Iterable, Union, Optional, List
+from collections.abc import Iterable
 from xml.dom.minidom import Text as XmlText
+from xml.etree.ElementTree import Element
 
 from PIL import Image
+from pydantic import AnyUrl, BaseModel
 from nonebot.adapters import Message as BaseMessage
 from nonebot.adapters import MessageSegment as BaseMessageSegment
-from nonebot.internal.adapter.message import TMS, TM
-from pydantic import BaseModel, AnyUrl
+from nonebot.internal.adapter.message import TM, TMS
 
-from .data import FaceEnum, Face, TagEnum, Tag
-from .exception import *
-from .utils import *
+from .data import Tag, Face, TagEnum, FaceEnum
+from .utils import unescape, set_father_tag
+from .exception import (
+    NoTagException,
+    NoFaceException,
+    ImageUnUploadException,
+    VideoUnUploadException,
+)
 
 
 class _ImgUrlCheck(BaseModel):
@@ -21,10 +28,10 @@ class _ImgUrlCheck(BaseModel):
 
 
 class MessageSegment(BaseMessageSegment["Message"]):
-    def __add__(self: TMS, other: Union[str, TMS, Iterable[TMS]]) -> TM:
+    def __add__(self: TMS, other: str | TMS | Iterable[TMS]) -> TM:
         return Message([self, other])
 
-    def __radd__(self: TMS, other: Union[str, TMS, Iterable[TMS]]) -> TM:
+    def __radd__(self: TMS, other: str | TMS | Iterable[TMS]) -> TM:
         return Message([other, self])
 
     @staticmethod
@@ -37,16 +44,17 @@ class MessageSegment(BaseMessageSegment["Message"]):
 
     @staticmethod
     def face(
-            name: Union[str, Face, FaceEnum], *,
-            code: Optional[str] = None, type_: Optional[str] = None,
-            url: Optional[str] = None, strict: bool = True
+        name: str | Face | FaceEnum,
+        *,
+        code: str | None = None,
+        type_: str | None = None,
+        url: str | None = None,
+        strict: bool = True,
     ) -> "FaceMsg":
         return FaceMsg(name, code=code, type_=type_, url=url, strict=strict)
 
     @staticmethod
-    def tag(
-            name: Union[str, Tag, TagEnum], strict: bool = True
-    ) -> "TagMsg":
+    def tag(name: str | Tag | TagEnum, strict: bool = True) -> "TagMsg":
         return TagMsg(name, strict=strict)
 
     def xml(self) -> str:
@@ -56,7 +64,7 @@ class MessageSegment(BaseMessageSegment["Message"]):
         raise NotImplementedError(f"{self.type}未实现")
 
     @classmethod
-    def get_message_class(cls) -> Type["Message"]:
+    def get_message_class(cls) -> type["Message"]:
         return Message
 
     def __str__(self) -> str:
@@ -89,35 +97,25 @@ class TagMsg(MessageSegment):
         return self.data.get("id")
 
     def xml(self) -> str:
-        return f'<a class="editor-hash-tag" href="/tag/{self.id}" ' \
-               f'data-id="{self.id}" data-label="{self.name}">#{self.name}</a>'
+        return (
+            f'<a class="editor-hash-tag" href="/tag/{self.id}" '
+            f'data-id="{self.id}" data-label="{self.name}">#{self.name}</a>'
+        )
 
-    def __init__(self, name: Union[str, Tag, TagEnum], *, strict: bool = True):
+    def __init__(self, name: str | Tag | TagEnum, *, strict: bool = True):
         if isinstance(name, str):
             for i in TagEnum:
                 if i.value.name == name:
-                    super().__init__(
-                        self.type,
-                        {"name": name, "id": i.value.id}
-                    )
+                    super().__init__(self.type, {"name": name, "id": i.value.id})
                     return
             if strict:
                 raise NoTagException(f"没有该Tag:{name}")
             else:
-                super().__init__(
-                    self.type,
-                    {"name": name}
-                )
+                super().__init__(self.type, {"name": name})
         elif isinstance(name, Tag):
-            super().__init__(
-                self.type,
-                {"name": name.name, "id": name.id}
-            )
+            super().__init__(self.type, {"name": name.name, "id": name.id})
         elif isinstance(name, TagEnum):
-            super().__init__(
-                self.type,
-                {"name": name.value.name, "id": name.value.id}
-            )
+            super().__init__(self.type, {"name": name.value.name, "id": name.value.id})
         else:
             raise NoTagException("未知类型Tag")
 
@@ -130,10 +128,12 @@ class VideoMsg(MessageSegment):
     type = "video"
 
     def __repr__(self) -> str:
-        return (f'{self.__class__.__name__}('
-                f'bv="{self.bv}",title="{self.title}",url="{self.url}"'
-                f',cover="{self.cover}"'
-                f')')
+        return (
+            f"{self.__class__.__name__}("
+            f'bv="{self.bv}",title="{self.title}",url="{self.url}"'
+            f',cover="{self.cover}"'
+            f")"
+        )
 
     def __str__(self) -> str:
         return f"[视频:{self.data['bv']}]"
@@ -143,7 +143,7 @@ class VideoMsg(MessageSegment):
         return self.data["bv"]
 
     @property
-    def title(self) -> Optional[str]:
+    def title(self) -> str | None:
         return self.data.get("title")
 
     @property
@@ -151,7 +151,7 @@ class VideoMsg(MessageSegment):
         return self.data["url"]
 
     @property
-    def cover(self) -> Optional[str]:
+    def cover(self) -> str | None:
         return self.data.get("cover")
 
     def check(self) -> bool:
@@ -161,14 +161,27 @@ class VideoMsg(MessageSegment):
         if self.url is None or self.title is None:
             raise VideoUnUploadException(f"视频未上传:{self.bv}")
 
-        return f'<p><img src="{self.url}" class="upload-img" data-bv="{self.bv}" referrerpolicy="no-referrer"></p>' \
-               f'<p><a target="_blank" rel="noopener noreferrer nofollow" class="editor-link editor-link" ' \
-               f'href="{self.url}">{self.title}</a></p>'
+        return (
+            f'<p><img src="{self.url}" class="upload-img" data-bv="{self.bv}" referrerpolicy="no-referrer"></p>'
+            f'<p><a target="_blank" rel="noopener noreferrer nofollow" class="editor-link editor-link" '
+            f'href="{self.url}">{self.title}</a></p>'
+        )
 
-    def __init__(self, bv: str, cover: Optional[str] = None, title: Optional[str] = None, url: Optional[str] = None):
+    def __init__(
+        self,
+        bv: str,
+        cover: str | None = None,
+        title: str | None = None,
+        url: str | None = None,
+    ):
         super().__init__(
             self.type,
-            {"bv": bv, "title": title, "url": url or f"https://www.bilibili.com/video/{bv}/", "cover": cover}
+            {
+                "bv": bv,
+                "title": title,
+                "url": url or f"https://www.bilibili.com/video/{bv}/",
+                "cover": cover,
+            },
         )
 
     @classmethod
@@ -196,11 +209,11 @@ class ImageMsg(MessageSegment):
         return f'<img src="{self.url}" class="upload-img" referrerpolicy="no-referrer">'.strip()
 
     @property
-    def file(self) -> Optional[bytes]:
+    def file(self) -> bytes | None:
         return self.data["file"]
 
     @property
-    def url(self) -> Optional[str]:
+    def url(self) -> str | None:
         return self.data.get("url")
 
     @property
@@ -210,12 +223,12 @@ class ImageMsg(MessageSegment):
     def check(self) -> bool:
         return bool(self.url)
 
-    def __init__(self, file: Union[str, bytes, BytesIO, Path], watermark: bool = False):
+    def __init__(self, file: str | bytes | BytesIO | Path, watermark: bool = False):
         url = None
         type_ = None
         if isinstance(file, str):
             try:
-                _url = _ImgUrlCheck.parse_obj({"url": file})
+                _url = _ImgUrlCheck.model_validate({"url": file})
                 type_ = file.split(".")[-1]
                 url = file
                 file = None
@@ -231,10 +244,7 @@ class ImageMsg(MessageSegment):
             file = file.getvalue()
         if type_ is None:
             type_ = Image.open(file).format.lower()
-        super().__init__(
-            self.type,
-            {"file": file, "type": type_, "url": url, "watermark": watermark}
-        )
+        super().__init__(self.type, {"file": file, "type": type_, "url": url, "watermark": watermark})
 
     @classmethod
     def get_message_class(cls) -> Type["ImageMsg"]:
@@ -245,6 +255,7 @@ class LinkMsg(MessageSegment):
     """
     预览文本里面只显示 链接文本
     """
+
     type = "link"
 
     def __repr__(self) -> str:
@@ -262,14 +273,13 @@ class LinkMsg(MessageSegment):
         return self.data["text"]
 
     def xml(self) -> str:
-        return f'<a target="_blank" rel="noopener noreferrer nofollow" class="editor-link editor-link" ' \
-               f'href="{self.url}">{self.txt}</a>'
+        return (
+            f'<a target="_blank" rel="noopener noreferrer nofollow" class="editor-link editor-link" '
+            f'href="{self.url}">{self.txt}</a>'
+        )
 
     def __init__(self, text: str, url: str):
-        super().__init__(
-            self.type,
-            {"text": text, "url": url}
-        )
+        super().__init__(self.type, {"text": text, "url": url})
 
 
 class NextLine(MessageSegment):
@@ -279,8 +289,10 @@ class NextLine(MessageSegment):
     """
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}' \
-               f'(text="{self.data.get("text")}",strong={self.get("strong")},em={self.get("em")})'
+        return (
+            f'{self.__class__.__name__}'
+            f'(text="{self.data.get("text")}",strong={self.get("strong")},em={self.get("em")})'
+        )
 
     @staticmethod
     def new_line() -> "NextLine":
@@ -295,9 +307,7 @@ class NextLine(MessageSegment):
         return '<br class="ProseMirror-trailingBreak">'
 
     def __init__(self) -> None:
-        super().__init__(
-            "text", {"text": "\n", "strong": False, "em": False}
-        )
+        super().__init__("text", {"text": "\n", "strong": False, "em": False})
 
     @classmethod
     def get_message_class(cls) -> Type["NextLine"]:
@@ -319,37 +329,50 @@ class FaceMsg(MessageSegment):
         return f"[表情:{self.data['name']}]"
 
     def __init__(
-            self, name: Union[str, Face, FaceEnum], *,
-            code: Optional[str] = None, type_: Optional[str] = None, url: Optional[str] = None, strict: bool = True
+        self,
+        name: str | Face | FaceEnum,
+        *,
+        code: str | None = None,
+        type_: str | None = None,
+        url: str | None = None,
+        strict: bool = True,
     ) -> None:
         if isinstance(name, str):
             for i in FaceEnum:
                 if i.value.name == name:
                     super().__init__(
-                        "face", {
-                            "name": name, "code": code or i.value.code,
-                            "type": type_ or i.value.type, "url": url or i.value.get_url()
-                        }
+                        "face",
+                        {
+                            "name": name,
+                            "code": code or i.value.code,
+                            "type": type_ or i.value.type,
+                            "url": url or i.value.get_url(),
+                        },
                     )
                     return
             if strict and not (code or type_ or url):
                 raise NoFaceException(f"没有该表情:{name}")
             else:
-                super().__init__(
-                    "face", {
-                        "name": name, "code": code, "type": type_, "url": url
-                    }
-                )
+                super().__init__("face", {"name": name, "code": code, "type": type_, "url": url})
         elif isinstance(name, Face):
             super().__init__(
-                "face", {"name": name.name, "code": name.code, "type": name.type, "url": name.get_url()}
+                "face",
+                {
+                    "name": name.name,
+                    "code": name.code,
+                    "type": name.type,
+                    "url": name.get_url(),
+                },
             )
         elif isinstance(name, FaceEnum):
             super().__init__(
-                "face", {
-                    "name": name.value.name, "code": name.value.code,
-                    "type": name.value.type, "url": name.value.get_url()
-                }
+                "face",
+                {
+                    "name": name.value.name,
+                    "code": name.value.code,
+                    "type": name.value.type,
+                    "url": name.value.get_url(),
+                },
             )
         else:
             raise NoFaceException("未知类型表情")
@@ -362,8 +385,10 @@ class FaceMsg(MessageSegment):
 
     def xml(self) -> str:
         name = self.data["name"]
-        return f'<img src="{self.url}" alt="{name}" title="{name}" class="emoticon-img" ' \
-               f'referrerpolicy="no-referrer" data-emotion-name="{name}" contenteditable="false" draggable="true">'
+        return (
+            f'<img src="{self.url}" alt="{name}" title="{name}" class="emoticon-img" '
+            f'referrerpolicy="no-referrer" data-emotion-name="{name}" contenteditable="false" draggable="true">'
+        )
         # f'<img class="ProseMirror-separator" alt="">'.strip()
 
     @classmethod
@@ -375,17 +400,13 @@ class _XmlMsg(MessageSegment):
     type = "xml"
 
     def __repr__(self) -> str:
-        return (
-            f'{self.__class__.__name__}(text="{self.data.get("text")}")'
-        )
+        return f'{self.__class__.__name__}(text="{self.data.get("text")}")'
 
     def __str__(self) -> str:
         return self.data.get("xml", "")
 
     def __init__(self, xml: str) -> None:
-        super().__init__(
-            "xml", {"xml": xml}
-        )
+        super().__init__("xml", {"xml": xml})
 
     def xml(self) -> str:
         return str(self)
@@ -410,9 +431,7 @@ class TextMsg(MessageSegment):
         return self.data.get("text", "")
 
     def __init__(self, text: str, *, strong: bool = False, em: bool = False) -> None:
-        super().__init__(
-            "text", {"text": text, "strong": strong, "em": em}
-        )
+        super().__init__("text", {"text": text, "strong": strong, "em": em})
 
     @property
     def txt(self) -> str:
@@ -426,7 +445,7 @@ class TextMsg(MessageSegment):
     def em(self) -> bool:
         return self.data["em"]
 
-    def raw_xml(self) -> List[Element]:
+    def raw_xml(self) -> list[Element]:
         def _xml(_txt):
             root = XmlText()
             root.data = _txt
@@ -452,9 +471,7 @@ class TextMsg(MessageSegment):
 
         txt = self.data["text"]
         txts = txt.split("\n")
-        return "".join(
-            f"<p>{_xml(i)}</p>" if index != len(txts) - 1 else _xml(i) for index, i in enumerate(txts)
-        )
+        return "".join(f"<p>{_xml(i)}</p>" if index != len(txts) - 1 else _xml(i) for index, i in enumerate(txts))
 
     @classmethod
     def get_message_class(cls) -> Type["TextMsg"]:
@@ -462,12 +479,11 @@ class TextMsg(MessageSegment):
 
 
 class Message(BaseMessage[MessageSegment]):
-
     def extract_plain_text(self) -> str:
         return super().extract_plain_text()
 
     @classmethod
-    def get_segment_class(cls) -> Type[MessageSegment]:
+    def get_segment_class(cls) -> type[MessageSegment]:
         return MessageSegment
 
     @staticmethod
@@ -518,12 +534,12 @@ class Message(BaseMessage[MessageSegment]):
             if (len(ml) > 1 and isinstance(ml[-2], FaceMsg)) or len(ml) == 1 and isinstance(ml[0], FaceMsg):
                 ml.insert(-1, _XmlMsg('<img class="ProseMirror-separator" alt="">'))
 
-        return "".join([
-            f"<p>{''.join(j.xml() for j in i)}</p>"
-            if not isinstance(i, VideoMsg) else
-            ''.join(j.xml() for j in i)
-            for i in msgs
-        ])
+        return "".join(
+            [
+                f"<p>{''.join(j.xml() for j in i)}</p>" if not isinstance(i, VideoMsg) else "".join(j.xml() for j in i)
+                for i in msgs
+            ]
+        )
 
     @staticmethod
     def _construct(msg: str) -> Iterable[MessageSegment]:
@@ -536,9 +552,9 @@ class Message(BaseMessage[MessageSegment]):
 
         def _split(txt: str):
             for i in re.finditer(
-                    # r"(\[(?P<type>\S+?)])|(?P<txt>([^[\]]+))",
-                    r"(#(?P<tag>(\S+))\s)|(\[(?P<type>\S+?)])|(?P<txt>([^[\]]+))",
-                    txt
+                # r"(\[(?P<type>\S+?)])|(?P<txt>([^[\]]+))",
+                r"(#(?P<tag>(\S+))\s)|(\[(?P<type>\S+?)])|(?P<txt>([^[\]]+))",
+                txt,
             ):
                 if i.group("tag") is not None:
                     yield "tag", i.group("tag")

@@ -1,12 +1,12 @@
-import asyncio
 import json
-from typing import Any, List, Optional, Tuple, Union
-from urllib.parse import urljoin
 from uuid import uuid1
+from typing import Any
+import asyncio
+from urllib.parse import urljoin
 
-from nonebot import Driver, logger
-from nonebot.adapters import Adapter as BaseAdapter
+from nonebot import Driver, logger, get_plugin_config
 from nonebot.drivers import Request, Response
+from nonebot.adapters import Adapter as BaseAdapter
 from nonebot.internal.driver import ForwardDriver
 
 from .bot import Bot, UnLoginBot
@@ -17,10 +17,10 @@ from .factory import EventFactory
 class Adapter(BaseAdapter):
     def __init__(self, driver: Driver, **kwargs: Any):
         super().__init__(driver, **kwargs)
-        self.club255_config: Config = Config(**self.config.dict())
+        self.club255_config: Config = get_plugin_config(Config)
         EventFactory.add_listen(self.club255_config.club255_listen or [])
-        self.ROOT = "https://2550505.com"
-        self.tasks: List[asyncio.Task] = []
+        self.ROOT = str(self.club255_config.club255_url)
+        self.tasks: list[asyncio.Task] = []
         self._setup()
 
     async def sleep(self):
@@ -33,20 +33,14 @@ class Adapter(BaseAdapter):
     async def _call_api(self, bot: Bot, api: str, **data: Any) -> Response:
         method = data.get("method") if data.get("method") else "GET"
         if method == "GET":
-            return await self.request(Request(
-                method, urljoin(self.ROOT, api), params=data, headers=bot.header
-            ))
+            return await self.request(Request(method, urljoin(self.ROOT, api), params=data, headers=bot.header))
         elif method == "POST":
-            return await self.request(Request(
-                method, urljoin(self.ROOT, api), json=data, headers=bot.header
-            ))
+            return await self.request(Request(method, urljoin(self.ROOT, api), json=data, headers=bot.header))
         else:
             raise ValueError(f"未知method:{method}")
 
-    async def _check_token(self, token: str) -> Tuple[bool, Optional[dict]]:
-        resp = await self.request(Request(
-            "GET", urljoin(self.ROOT, "user/info"), cookies={"token": token}
-        ))
+    async def _check_token(self, token: str) -> tuple[bool, dict | None]:
+        resp = await self.request(Request("GET", urljoin(self.ROOT, "user/info"), cookies={"token": token}))
         if resp.status_code != 200:
             return False, None
         try:
@@ -57,18 +51,17 @@ class Adapter(BaseAdapter):
             return False, None
 
     async def _get_token(
-            self, account: Optional[str] = None, password: Optional[str] = None, token: Optional[str] = None
-    ) -> Union[str, dict]:
+        self,
+        account: str | None = None,
+        password: str | None = None,
+        token: str | None = None,
+    ) -> str | dict:
         reason = []
         if token:
             logger.debug(f"{self.get_name()} | 使用token登录")
             res, data = await self._check_token(token)
             if res:
-                return {
-                    "token": token,
-                    "code": 0,
-                    "uid": data["info"]["uid"]
-                }
+                return {"token": token, "code": 0, "uid": data["info"]["uid"]}
             else:
                 logger.debug(f"{self.get_name()} | token无效")
                 reason.append("token无效")
@@ -78,11 +71,16 @@ class Adapter(BaseAdapter):
             return "、".join(reason)
 
         logger.debug(f"{self.get_name()} | 使用密码登录")
-        data = json.loads((await self.request(Request(
-            "POST", urljoin(self.ROOT, "auth/login"), json={
-                "account": account, "password": password
-            }
-        ))).content)
+        content = (
+            await self.request(
+                Request(
+                    "POST",
+                    urljoin(self.ROOT, "auth/login"),
+                    json={"account": account, "password": password},
+                )
+            )
+        ).content
+        data = json.loads(content)
 
         if msg := data.get("msg"):
             reason.append(msg)
@@ -98,20 +96,26 @@ class Adapter(BaseAdapter):
             await EventFactory.main(bot, self.club255_config.club255_run_now)
         except Exception as e:
             logger.error(f"{self.get_name()}:{bot.self_id} -> 处理事件失败:{e}")
-            logger.error(e)
+            logger.exception(e)
 
     def _create_unlogin_bot(self) -> UnLoginBot:
-        bot = UnLoginBot(adapter=self, header={
-            "user-agent": f"NoneBot-Adapter-{self.get_name()}:maoguai",
-            "authorization": str(uuid1())
-        }, config=self.club255_config)
+        bot = UnLoginBot(
+            adapter=self,
+            header={
+                "user-agent": f"NoneBot-Adapter-{self.get_name()}:maoguai",
+                "authorization": str(uuid1()),
+            },
+            config=self.club255_config,
+        )
         return bot
 
     async def _create_bot(
-            self, *, account: Optional[str] = None, password: Optional[str] = None, token: Optional[str] = None
-    ) -> Optional[Bot]:
-        bot: Optional[Bot]
-
+        self,
+        *,
+        account: str | None = None,
+        password: str | None = None,
+        token: str | None = None,
+    ) -> Bot | None:
         login_res = await self._get_token(account, password, token)
 
         if isinstance(login_res, str):
@@ -121,17 +125,20 @@ class Adapter(BaseAdapter):
         logger.success(f"{self.get_name()} | {account or '未配置账号'} | 登录成功:{login_res['uid']}")
 
         return Bot(
-            adapter=self, self_id=str(login_res["uid"]), header={
+            adapter=self,
+            self_id=str(login_res["uid"]),
+            header={
                 "cookie": f"token={login_res['token']};",
                 "user-agent": f"NoneBot-Adapter-{self.get_name()}:{account}({login_res['uid']})",
-                "authorization": str(uuid1())
-            }, config=self.club255_config
+                "authorization": str(uuid1()),
+            },
+            config=self.club255_config,
         )
 
     async def _start_forward(self) -> None:
         if (
-                not (self.club255_config.club255_account and self.club255_config.club255_password) and
-                self.club255_config.club255_token is None
+            not (self.club255_config.club255_account and self.club255_config.club255_password)
+            and self.club255_config.club255_token is None
         ):
             logger.info(f"{self.get_name()} 未配置账号密码或token")
             bot = self._create_unlogin_bot()
@@ -140,7 +147,7 @@ class Adapter(BaseAdapter):
                 bot = await self._create_bot(
                     account=self.club255_config.club255_account,
                     password=self.club255_config.club255_password,
-                    token=self.club255_config.club255_token
+                    token=self.club255_config.club255_token,
                 )
             except Exception as e:
                 logger.error(f"{self.get_name()} 创建Bot失败", e)

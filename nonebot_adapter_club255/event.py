@@ -1,27 +1,27 @@
-from copy import deepcopy
-from datetime import datetime
 from typing import Literal, Optional
+from datetime import datetime
 
 from nonebot import escape_tag
+from pydantic import Field, BaseModel, model_validator
 from nonebot.adapters import Event as BaseEvent
-from pydantic import root_validator, Field
 
-from .bean import RawPost, BaseFloor, PostInfo, BaseUser
-from .message import Message
+from .bean import RawPost, BaseUser, PostInfo, BaseFloor
 from .utils import truncate
+from .message import Message
 
 
 class Event(BaseEvent):
     time: datetime
     self_uid: int
     post_type: str
-    raw_data: dict
 
-    @root_validator(pre=True, allow_reuse=True)
-    def _set_raw_data(cls, values: dict):
+    @model_validator(mode="before")
+    @classmethod
+    def _set_raw_data(cls, values: dict | BaseModel):
+        if isinstance(values, BaseModel):
+            values = values.model_dump()
         if values.get("time") is None:
             values["time"] = datetime.now()
-        values["raw_data"] = deepcopy(values)
         return values
 
     def get_type(self) -> str:
@@ -59,15 +59,18 @@ class MessageEvent(Event):
     def get_message(self) -> "Message":
         return self.message
 
-    @root_validator(pre=True, allow_reuse=True)
-    def _set_message(cls, values: dict):
+    @model_validator(mode="before")
+    @classmethod
+    def _set_message(cls, values: dict | BaseModel):
+        if isinstance(values, BaseModel):
+            values = values.model_dump()
         Message.join_url(values)
         values["message"] = values["content"]
         return values
 
 
 class OnLiveNoticeEvent(NoticeEvent):
-    notice_type = "on_live"
+    notice_type: str = "on_live"
     # 直播消息
     keyframe: str
     # 直播状态: 1开播,2未开播
@@ -75,17 +78,17 @@ class OnLiveNoticeEvent(NoticeEvent):
     user_cover: str
 
     def get_event_description(self) -> str:
-        return f"hanser开播啦!"
+        return "hanser开播啦!"
 
 
 class AtNoticeEvent(NoticeEvent):
-    notice_type = "at"
+    notice_type: str = "at"
     # 没被@过，写不出来
     pass
 
 
 class FollowNoticeEvent(NoticeEvent):
-    notice_type = "follow"
+    notice_type: str = "follow"
 
     sort: int
     status: int
@@ -99,7 +102,7 @@ class FollowNoticeEvent(NoticeEvent):
 
 
 class SystemNoticeEvent(NoticeEvent):
-    notice_type = "system_notice"
+    notice_type: str = "system_notice"
 
     sort: int
     status: int
@@ -112,7 +115,7 @@ class SystemNoticeEvent(NoticeEvent):
 
 
 class SystemNoticeMessageEvent(NoticeEvent):
-    notice_type = "system_message_notice"
+    notice_type: str = "system_message_notice"
 
     # 消息中心->系统消息
     content: str
@@ -123,7 +126,7 @@ class SystemNoticeMessageEvent(NoticeEvent):
 
 
 class LikeNoticeEvent(NoticeEvent):
-    notice_type = "like"
+    notice_type: str = "like"
 
     postId: int
     time: datetime
@@ -136,7 +139,7 @@ class LikeNoticeEvent(NoticeEvent):
 
 
 class PostLikeNoticeEvent(LikeNoticeEvent):
-    notice_type = "notice_like"
+    notice_type: str = "notice_like"
 
     postId: int
     time: datetime
@@ -150,7 +153,7 @@ class PostLikeNoticeEvent(LikeNoticeEvent):
 
 
 class FloorLikeNoticeEvent(LikeNoticeEvent):
-    notice_type = "floor_like"
+    notice_type: str = "floor_like"
 
     postId: int
     time: datetime
@@ -175,21 +178,15 @@ class ReplyEvent(MessageEvent):
     def get_event_description(self) -> str:
         return f"{self.user.nickname}({self.user.uid}) 给你回复了({truncate(self.message)})"
 
-    @root_validator(pre=True, allow_reuse=True)
-    def _set_message(cls, values: dict):
-        Message.join_url(values)
-        values["message"] = values["content"]
-        return values
-
     def to_post_reply_event(self) -> Optional["PostReplyEvent"]:
         if self.type != 1:
             return None
-        return PostReplyEvent.parse_obj(self.raw_data)
+        return PostReplyEvent.model_validate(self)
 
     def to_floor_reply_event(self) -> Optional["FloorReplyEvent"]:
         if self.type != 2:
             return None
-        return FloorReplyEvent.parse_obj(self.raw_data)
+        return FloorReplyEvent.model_validate(self)
 
 
 class PostReplyEvent(ReplyEvent):
@@ -197,8 +194,7 @@ class PostReplyEvent(ReplyEvent):
     post: RawPost
 
     def get_event_description(self) -> str:
-        return f"{self.user.nickname}({self.user.uid}) " \
-               f"给你的帖子({self.post.title})回复了({truncate(self.message)})"
+        return f"{self.user.nickname}({self.user.uid}) " f"给你的帖子({self.post.title})回复了({truncate(self.message)})"
 
 
 class FloorReplyEvent(ReplyEvent):
@@ -206,17 +202,20 @@ class FloorReplyEvent(ReplyEvent):
     floor: BaseFloor
 
     def get_event_description(self) -> str:
-        return f"{self.user.nickname}({self.user.uid}) " \
-               f"给你的回帖({truncate(self.floor.message)})回复了({truncate(self.message)})"
+        return (
+            f"{self.user.nickname}({self.user.uid}) "
+            f"给你的回帖({truncate(self.floor.message)})回复了({truncate(self.message)})"
+        )
 
 
 class BasePostEvent(MessageEvent):
     message_type: str = "base_post"
     post: RawPost
 
-    @root_validator(pre=True, allow_reuse=True)
+    @model_validator(mode="before")
+    @classmethod
     def _set_post(cls, values: dict):
-        values["post"] = values["raw_data"]
+        values["post"] = values
         return values
 
     def get_event_description(self) -> str:
@@ -227,9 +226,12 @@ class PostEvent(MessageEvent):
     message_type: str = "post"
     post: PostInfo
 
-    @root_validator(pre=True, allow_reuse=True)
-    def _set_post(cls, values: dict):
-        values["post"] = values["raw_data"]
+    @model_validator(mode="before")
+    @classmethod
+    def _set_post(cls, values: dict | BaseModel):
+        if isinstance(values, BaseModel):
+            values = values.model_dump()
+        values["post"] = values
         return values
 
     def get_event_description(self) -> str:

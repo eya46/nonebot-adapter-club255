@@ -43,5 +43,10 @@ POST_COMMON: Permission = Permission(_common_post)
 POST_HANSER: Permission = Target_User_Post(1)
 
 __all__ = [
-    "Target_User_Post", "POST_BIRTHDAY", "POST_NEW_USER", "POST_LEVEL", "POST_COMMON", "POST_HANSER"
+    "Target_User_Post",
+    "POST_BIRTHDAY",
+    "POST_NEW_USER",
+    "POST_LEVEL",
+    "POST_COMMON",
+    "POST_HANSER",
 ]
