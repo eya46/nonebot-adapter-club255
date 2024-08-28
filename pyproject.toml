@@ -5,11 +5,13 @@ description = ""
 authors = ["eya46 <644310932@qq.com>"]
 readme = "README.md"
 packages = [{include = "adapter_club255"}]
+license = "MIT"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-nonebot2 = {extras = ["fastapi", "httpx"], version = "^2.0.0"}
+nonebot2 = {extras = ["fastapi", "httpx"], version = "^2.3.3"}
 pillow = "^9.5.0"
+pydantic = "~2"
 
 
 [build-system]
