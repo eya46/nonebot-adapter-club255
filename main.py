@@ -1,12 +1,6 @@
-from pathlib import Path
-
 import nonebot
 
-nonebot.adapters.__path__.append(
-    str((Path(__file__).parent / "nonebot" / "adapters").resolve())
-)
-
-from nonebot.adapters.club255 import Adapter as Club255_Adapter
+from nonebot_adapter_club255 import Adapter as Club255_Adapter
 
 nonebot.init()
 

@@ -1,8 +1,7 @@
 from nonebot import on_message, logger
 
-from nonebot.adapters.club255 import NewPostEvent, Bot, FaceEnum, NextLine, FaceMsg  # type: ignore
-from nonebot.adapters.club255.event import NewNicePostEvent  # type: ignore
-from nonebot.adapters.club255.permission import POST_NEW_USER  # type: ignore
+from nonebot_adapter_club255 import Bot
+from nonebot_adapter_club255.event import NewPostEvent
 
 show = on_message(block=False)
 
